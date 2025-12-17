@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const db = require("./database");
+const Database = require("better-sqlite3");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -8,81 +8,60 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-/* =====================
-   GET all tasks
-===================== */
+// SQLite database
+const db = new Database("tasks.db");
+
+// Create table
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL
+  )
+`).run();
+
+// GET all tasks
 app.get("/tasks", (req, res) => {
-  db.all("SELECT * FROM tasks", [], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json(rows);
-  });
+  const tasks = db.prepare("SELECT * FROM tasks").all();
+  res.json(tasks);
 });
 
-/* =====================
-   ADD new task
-===================== */
+// ADD task
 app.post("/tasks", (req, res) => {
   const { title } = req.body;
+  if (!title) return res.status(400).json({ error: "Title required" });
 
-  if (!title) {
-    return res.status(400).json({ error: "Title is required" });
-  }
+  const result = db
+    .prepare("INSERT INTO tasks (title, status) VALUES (?, ?)")
+    .run(title, "todo");
 
-  const sql = "INSERT INTO tasks (title, status) VALUES (?, ?)";
-  db.run(sql, [title, "todo"], function (err) {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
+  const task = db
+    .prepare("SELECT * FROM tasks WHERE id = ?")
+    .get(result.lastInsertRowid);
 
-    res.json({
-      id: this.lastID,
-      title,
-      status: "todo",
-    });
-  });
+  res.json(task);
 });
 
-/* =====================
-   UPDATE task status
-===================== */
+// UPDATE task
 app.put("/tasks/:id", (req, res) => {
-  const { id } = req.params;
   const { status } = req.body;
+  const { id } = req.params;
 
-  const sql = "UPDATE tasks SET status = ? WHERE id = ?";
-  db.run(sql, [status, id], function (err) {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-
-    res.json({ id, status });
-  });
+  db.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(status, id);
+  res.json({ success: true });
 });
 
-/* =====================
-   DELETE task
-===================== */
+// DELETE task
 app.delete("/tasks/:id", (req, res) => {
   const { id } = req.params;
-
-  const sql = "DELETE FROM tasks WHERE id = ?";
-  db.run(sql, [id], function (err) {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-
-    res.json({ success: true });
-  });
+  db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
+  res.json({ success: true });
 });
 
-/* =====================
-   START SERVER
-===================== */
 app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+  console.log(`Backend running on port ${PORT}`);
 });
+
 
 
 
